@@ -1,7 +1,7 @@
 1-bit Wide ResNet
 ===========
 
-PyTorch Implementation of training 1-bit Wide ResNets from this paper:
+PyTorch implementation of training 1-bit Wide ResNets from this paper:
 
 *Training wide residual networks for deployment using a single bit for each weight* by **Mark D. McDonnell** at ICLR 2018
 
