@@ -1,77 +1,123 @@
 from collections import OrderedDict
+import math
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 
-class Block(nn.Module):
+def init_weight(*args):
+    return nn.Parameter(nn.init.kaiming_normal_(torch.zeros(*args), mode='fan_out', nonlinearity='relu'))
 
-    def __init__(self, width):
-        super().__init__()
-        self.bn0 = nn.BatchNorm2d(width, affine=False)
-        self.conv0 = nn.Conv2d(width, width, kernel_size=3, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(width, affine=False)
-        self.conv1 = nn.Conv2d(width, width, kernel_size=3, padding=1, bias=False)
+
+class ForwardSign(torch.autograd.Function):
+    """Fake sign op for 1-bit weights.
+
+    See eq. (1) in https://arxiv.org/abs/1802.08530
+
+    Does He-init like forward, and nothing on backward.
+    """
 
     def forward(self, x):
-        h = self.conv0(F.relu(self.bn0(x)))
-        h = self.conv1(F.relu(self.bn1(h)))
+        return math.sqrt(2. / (x.shape[1] * x.shape[2] * x.shape[3])) * x.sign()
+
+    def backward(self, g):
+        return g
+
+
+class ModuleBinarizable(nn.Module):
+
+    def __init__(self, binarize=False):
+        super().__init__()
+        self.binarize = binarize
+
+    def _get_weight(self, name):
+        w = getattr(self, name)
+        return ForwardSign()(w) if self.binarize else w
+
+    def forward(self):
+        pass
+
+
+class Block(ModuleBinarizable):
+    """Pre-activated ResNet block.
+    """
+
+    def __init__(self, width, binarize=False):
+        super().__init__(binarize)
+        self.bn0 = nn.BatchNorm2d(width, affine=False)
+        self.register_parameter('conv0', init_weight(width, width, 3, 3))
+        self.bn1 = nn.BatchNorm2d(width, affine=False)
+        self.register_parameter('conv1', init_weight(width, width, 3, 3))
+
+    def forward(self, x):
+        h = F.conv2d(F.relu(self.bn0(x)), self._get_weight('conv0'), padding=1)
+        h = F.conv2d(F.relu(self.bn1(h)), self._get_weight('conv1'), padding=1)
         return x + h
 
 
-class DownsampleBlock(nn.Module):
+class DownsampleBlock(ModuleBinarizable):
+    """Downsample block.
 
-    def __init__(self, width):
-        super().__init__()
+    Does F.avg_pool2d + torch.cat instead of strided conv.
+    """
+
+    def __init__(self, width, binarize=False):
+        super().__init__(binarize)
         self.bn0 = nn.BatchNorm2d(width // 2, affine=False)
-        self.conv0 = nn.Conv2d(width // 2, width,
-                               kernel_size=3, padding=1, stride=2, bias=False)
+        self.register_parameter('conv0', init_weight(width, width // 2, 3, 3))
         self.bn1 = nn.BatchNorm2d(width, affine=False)
-        self.conv1 = nn.Conv2d(width, width,
-                               kernel_size=3, padding=1, stride=1, bias=False)
+        self.register_parameter('conv1', init_weight(width, width, 3, 3))
 
     def forward(self, x):
-        h = self.conv0(F.relu(self.bn0(x)))
-        h = self.conv1(F.relu(self.bn1(h)))
+        h = F.conv2d(F.relu(self.bn0(x)), self._get_weight('conv0'), padding=1, stride=2)
+        h = F.conv2d(F.relu(self.bn1(h)), self._get_weight('conv1'), padding=1)
         x_d = F.avg_pool2d(x, kernel_size=3, padding=1, stride=2)
         x_d = torch.cat([x_d, torch.zeros_like(x_d)], dim=1)
         return x_d + h
 
 
-class WRN_McDonnel(nn.Module):
+class WRN_McDonnel(ModuleBinarizable):
     """Implementation of modified Wide Residual Network.
+
+    Differences with pre-activated ResNet and Wide ResNet:
+        * BatchNorm has no affine weight and bias parameters
+        * First layer has 16 * width channels
+        * Last fc layer is removed in favor of 1x1 conv + F.avg_pool2d
+        * Downsample is done by F.avg_pool2d + torch.cat instead of strided conv
+
+    First and last convolutional layers are kept in float32.
     """
 
-    def __init__(self, depth, width, num_classes):
+    def __init__(self, depth, width, num_classes, binarize=False):
         super().__init__()
+        self.binarize = binarize
         widths = [int(v * width) for v in (16, 32, 64)]
         n = (depth - 2) // 6
 
-        self.conv0 = nn.Conv2d(3, widths[0], kernel_size=3, padding=1, bias=False)
+        self.register_parameter('conv0', init_weight(widths[0], 3, 3, 3))
 
         self.group0 = self._make_block(widths[0], n)
         self.group1 = self._make_block(widths[1], n, downsample=True)
         self.group2 = self._make_block(widths[2], n, downsample=True)
 
         self.bn = nn.BatchNorm2d(widths[2], affine=False)
-        self.conv_last = nn.Conv2d(widths[2], num_classes, kernel_size=1, bias=False)
+        self.register_parameter('conv_last', init_weight(num_classes, widths[2], 1, 1))
         self.bn_last = nn.BatchNorm2d(num_classes)
 
-    @staticmethod
-    def _make_block(width, n, downsample=False):
+    def _make_block(self, width, n, downsample=False):
         def select_block(j):
             if downsample and j == 0:
-                return DownsampleBlock(width)
-            return Block(width)
+                return DownsampleBlock(width, self.binarize)
+            return Block(width, self.binarize)
         return nn.Sequential(OrderedDict(('block%d' % i, select_block(i))
                                          for i in range(n)))
 
     def forward(self, x):
-        h = self.conv0(x)
+        h = F.conv2d(x, self.conv0, padding=1)
         h = self.group0(h)
         h = self.group1(h)
         h = self.group2(h)
         h = F.relu(self.bn(h))
-        h = self.conv_last(h)
+        h = F.conv2d(h, self.conv_last)
         h = self.bn_last(h)
         return F.avg_pool2d(h, kernel_size=h.shape[-2:]).view(h.shape[0], -1)
