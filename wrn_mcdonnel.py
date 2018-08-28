@@ -17,10 +17,12 @@ class ForwardSign(torch.autograd.Function):
     Does He-init like forward, and nothing on backward.
     """
 
-    def forward(self, x):
+    @staticmethod
+    def forward(ctx, x):
         return math.sqrt(2. / (x.shape[1] * x.shape[2] * x.shape[3])) * x.sign()
 
-    def backward(self, g):
+    @staticmethod
+    def backward(ctx, g):
         return g
 
 
@@ -32,7 +34,7 @@ class ModuleBinarizable(nn.Module):
 
     def _get_weight(self, name):
         w = getattr(self, name)
-        return ForwardSign()(w) if self.binarize else w
+        return ForwardSign.apply(w) if self.binarize else w
 
     def forward(self):
         pass

@@ -5,17 +5,20 @@ PyTorch implementation of training 1-bit Wide ResNets from this paper:
 
 *Training wide residual networks for deployment using a single bit for each weight* by **Mark D. McDonnell** at ICLR 2018
 
-https://openreview.net/forum?id=rytNfI1AZ<br>
-https://arxiv.org/abs/1802.08530
+<https://openreview.net/forum?id=rytNfI1AZ>
+
+<https://arxiv.org/abs/1802.08530>
 
 The idea is very simple but surprisingly effective for training ResNets with binary weights. Here is the proposed weight parameterization as PyTorch autograd function:
 
 ```python
 class ForwardSign(torch.autograd.Function):
-    def forward(self, w):
+    @staticmethod
+    def forward(ctx, w):
         return math.sqrt(2. / (w.shape[1] * w.shape[2] * w.shape[3])) * w.sign()
 
-    def backward(self, g):
+    @staticmethod
+    def backward(ctx, g):
         return g
 ```
 
@@ -28,13 +31,13 @@ On forward, we take sign of the weights are scale it by He-init constant. On bac
 
 ## Details
 
-Here are the differences with WRN code https://github.com/szagoruyko/wide-residual-networks :
+Here are the differences with WRN code <https://github.com/szagoruyko/wide-residual-networks>:
 
- * BatchNorm has no affine weight and bias parameters
- * First layer has 16 * width channels
- * Last fc layer is removed in favor of 1x1 conv + F.avg_pool2d
- * Downsample is done by F.avg_pool2d + torch.cat instead of strided conv
- * SGD with cosine annealing and warm restarts
+* BatchNorm has no affine weight and bias parameters
+* First layer has 16 * width channels
+* Last fc layer is removed in favor of 1x1 conv + F.avg_pool2d
+* Downsample is done by F.avg_pool2d + torch.cat instead of strided conv
+* SGD with cosine annealing and warm restarts
 
 I used PyTorch 0.4.1 and Python 3.6 to run the code.
 
@@ -54,4 +57,4 @@ I've also put 3.5 Mb checkpoint with binary weights packed with `np.packbits`, a
 python evaluate_packed.py --checkpoint wrn20-10-1bit-packed.pth.tar --width 10 --dataset CIFAR100
 ```
 
-S3 url to checkpoint: https://s3.amazonaws.com/modelzoo-networks/wrn20-10-1bit-packed.pth.tar
+S3 url to checkpoint: <https://s3.amazonaws.com/modelzoo-networks/wrn20-10-1bit-packed.pth.tar>
