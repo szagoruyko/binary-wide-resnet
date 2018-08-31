@@ -22,7 +22,7 @@ class ForwardSign(torch.autograd.Function):
         return g
 ```
 
-On forward, we take sign of the weights are scale it by He-init constant. On backward, we propagate gradient without changes. WRN-20-10 trained with such parameterization is only slightly off from it's full precision variant, here is what I got myself with this code on CIFAR-100:
+On forward, we take sign of the weights and scale it by He-init constant. On backward, we propagate gradient without changes. WRN-20-10 trained with such parameterization is only slightly off from it's full precision variant, here is what I got myself with this code on CIFAR-100:
 
 | network | accuracy (5 runs mean +- std) | checkpoint (Mb) |
 |:---|:---:|:---:|
