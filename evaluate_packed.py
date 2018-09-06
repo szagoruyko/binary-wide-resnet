@@ -4,7 +4,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from torchnet.meter import ClassErrorMeter
-from wrn_mcdonnel import WRN_McDonnel
+from wrn_mcdonnell import WRN_McDonnell
 from main import create_dataset
 
 
@@ -39,7 +39,7 @@ def main():
         else:
             weights_unpacked[k[7:]] = w
 
-    model = WRN_McDonnel(args.depth, args.width, num_classes)
+    model = WRN_McDonnell(args.depth, args.width, num_classes)
     model.load_state_dict(weights_unpacked)
     model = cast(model)
     model.eval()

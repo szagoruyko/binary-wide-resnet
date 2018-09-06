@@ -78,7 +78,7 @@ class DownsampleBlock(ModuleBinarizable):
         return x_d + h
 
 
-class WRN_McDonnel(ModuleBinarizable):
+class WRN_McDonnell(ModuleBinarizable):
     """Implementation of modified Wide Residual Network.
 
     Differences with pre-activated ResNet and Wide ResNet:

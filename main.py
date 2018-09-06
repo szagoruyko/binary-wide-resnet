@@ -22,7 +22,7 @@ from torch.backends import cudnn
 import torchvision.transforms as T
 import torchvision.datasets as datasets
 import torchnet as tnt
-from wrn_mcdonnel import WRN_McDonnel
+from wrn_mcdonnell import WRN_McDonnell
 
 cudnn.benchmark = True
 
@@ -87,7 +87,7 @@ def main():
     train_loader = create_iterator(True)
     test_loader = create_iterator(False)
 
-    model = WRN_McDonnel(args.depth, args.width, num_classes, args.binarize)
+    model = WRN_McDonnell(args.depth, args.width, num_classes, args.binarize)
     model = cast(DataParallel(model))
 
     n_parameters = sum(p.numel() for p in model.parameters())
